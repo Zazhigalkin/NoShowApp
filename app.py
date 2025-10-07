@@ -4,7 +4,6 @@ import csv
 from datetime import datetime, timedelta
 from collections import defaultdict
 import io
-import chardet
 
 st.set_page_config(page_title="Анализ Noshow by Кирилл", page_icon="✈️", layout="wide")
 
@@ -17,21 +16,17 @@ uploaded_file = st.file_uploader("Загрузите CSV файл с данны�
 
 if uploaded_file is not None:
     try:
-        # Определяем кодировку файла
-        raw_data = uploaded_file.getvalue()
-        encoding_result = chardet.detect(raw_data)
-        file_encoding = encoding_result['encoding']
-        
-        st.write(f"📝 Определена кодировка файла: {file_encoding}")
-        
-        # Пробуем разные кодировки если chardet не справился
-        encodings_to_try = [file_encoding, 'utf-8-sig', 'windows-1251', 'cp1251', 'iso-8859-1']
+        # Пробуем разные кодировки
+        encodings_to_try = ['utf-8-sig', 'windows-1251', 'cp1251', 'iso-8859-1', 'utf-8']
         
         content = None
+        used_encoding = None
+        
         for encoding in encodings_to_try:
             try:
                 uploaded_file.seek(0)  # Сбрасываем позицию файла
                 content = uploaded_file.getvalue().decode(encoding)
+                used_encoding = encoding
                 st.success(f"✅ Успешно прочитано с кодировкой: {encoding}")
                 break
             except UnicodeDecodeError:
@@ -41,30 +36,35 @@ if uploaded_file is not None:
             # Если автоматическое определение не сработало, пробуем force decode
             uploaded_file.seek(0)
             content = uploaded_file.getvalue().decode('utf-8', errors='replace')
+            used_encoding = 'utf-8 (with errors replaced)'
             st.warning("⚠️ Использовано декодирование с заменой ошибок")
         
         # Пропускаем первые строки до начала данных
         lines = content.split('\n')
         
-        # Ищем строку с заголовками (где есть "Рейс;Дата;Частота")
+        # Ищем строку с заголовками (где есть "Рейс;Дата;Частота" или данные начинаются с N4-281)
         header_line_index = -1
         for i, line in enumerate(lines):
             if 'Рейс;Дата;Частота' in line or 'Рейс;Дата' in line:
                 header_line_index = i
                 break
+            if line.startswith('N4-281') and ';' in line:
+                # Если нашли данные, заголовки должны быть на 2 строки выше
+                header_line_index = i - 2 if i >= 2 else 0
+                break
         
         if header_line_index == -1:
-            # Если не нашли заголовки, используем эвристику
+            # Если не нашли стандартные заголовки, ищем любую строку с нужными колонками
             for i, line in enumerate(lines):
-                if 'N4-281' in line and ';' in line:
-                    header_line_index = i - 1 if i > 0 else 0
+                if ';' in line and ('Рейс' in line or 'Дата' in line or 'Seg Bkd Total' in line):
+                    header_line_index = i
                     break
         
         if header_line_index >= 0:
             # Используем строку с заголовками и все последующие
             data_lines = lines[header_line_index:]
-            # Убираем пустые строки
-            data_lines = [line.strip() for line in data_lines if line.strip()]
+            # Убираем пустые строки и строки только с разделителями
+            data_lines = [line.strip() for line in data_lines if line.strip() and not line.replace(';', '').strip() == '']
             
             if len(data_lines) > 1:
                 # Создаем CSV контент
@@ -78,6 +78,10 @@ if uploaded_file is not None:
                 all_flights = set()
                 total_rows = 0
                 processed_rows = []
+                
+                # Получаем доступные поля
+                available_fields = reader.fieldnames if reader.fieldnames else []
+                st.write(f"📋 Найдены поля: {available_fields}")
                 
                 for row in reader:
                     try:
@@ -97,15 +101,22 @@ if uploaded_file is not None:
                         bkd_str = row.get('Seg Bkd Total', '0').strip()
                         nsh_str = row.get('Nsh', '0').strip()
                         
-                        bkd = int(float(bkd_str)) if bkd_str else 0
-                        nsh = int(float(nsh_str)) if nsh_str else 0
+                        # Обработка пустых значений
+                        bkd = int(float(bkd_str)) if bkd_str and bkd_str != '' else 0
+                        nsh = int(float(nsh_str)) if nsh_str and nsh_str != '' else 0
                         
                         segment = row.get('Сегмент', '').strip()
                         
                         flights_data[flight_number][day_name].append((bkd, nsh, segment))
                         all_flights.add(flight_number)
                         total_rows += 1
-                        processed_rows.append(row)
+                        processed_rows.append({
+                            'Рейс': flight_number,
+                            'Дата': date_str,
+                            'Сегмент': segment,
+                            'Seg Bkd Total': bkd,
+                            'Nsh': nsh
+                        })
                             
                     except (KeyError, ValueError, TypeError) as e:
                         st.write(f"⚠️ Пропущена строка из-за ошибки: {e}")
@@ -115,7 +126,7 @@ if uploaded_file is not None:
                 
                 # Показываем превью данных
                 if processed_rows:
-                    st.subheader("📋 Превью данных")
+                    st.subheader("📋 Превью данных (первые 5 записей)")
                     preview_df = pd.DataFrame(processed_rows[:5])
                     st.dataframe(preview_df)
                 
@@ -240,14 +251,17 @@ if uploaded_file is not None:
                             recommended_overbooking = int(avg_bookings_max_day * max_rate)
                             
                             st.success(f"**Рекомендуемый овербукинг для {russian_days.get(max_rate_day, max_rate_day)}**: {recommended_overbooking} дополнительных мест")
+                else:
+                    st.error("❌ Не найдено данных о рейсах в файле")
             else:
                 st.error("❌ Не найдено данных в файле")
         else:
             st.error("❌ Не удалось найти заголовки данных в файле")
+            st.info("Попробуйте сохранить файл с явными заголовками: Рейс;Дата;Сегмент;Seg Bkd Total;Nsh")
                 
     except Exception as e:
         st.error(f"❌ Ошибка при обработке файла: {e}")
-        st.write("Попробуйте сохранить файл в кодировке UTF-8")
+        st.info("Попробуйте сохранить файл в кодировке UTF-8 с разделителем ';'")
 
 else:
     st.info("👆 Пожалуйста, загрузите CSV файл для начала анализа")
@@ -267,10 +281,13 @@ with st.expander("ℹ️ Инструкция по формату файла"):
     - Используйте разделитель **точка с запятой (;)**
     - Файл должен содержать заголовки столбцов
 
-    **Пример данных:**
+    **Пример корректного формата:**
     ```
     Рейс;Дата;Сегмент;Seg Bkd Total;Nsh
     N4-281;01.09.2025;LED-KGD;216;6
     N4-281;02.09.2025;LED-KGD;192;7
+    N4-281;03.09.2025;LED-KGD;189;3
     ```
+
+    **Примечание:** Приложение автоматически определит структуру вашего файла.
     """)
