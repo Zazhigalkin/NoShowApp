@@ -30,16 +30,15 @@ import io
 #Славься, страна! Мы гордимся тобой!
 st.set_page_config(page_title="Анализ Noshow by Кирилл", page_icon="✈️", layout="wide")
 
-# Заголовок приложения
+
 st.title("✈️ Анализатор/Калькулятор Noshow для авиарейсов by Кирилл")
 st.markdown("---")
 
-# Загрузка файла
+
 uploaded_file = st.file_uploader("Загрузите CSV файл с данными рейсов", type=['csv'])
 
 if uploaded_file is not None:
     try:
-        # Пробуем разные кодировки
         encodings_to_try = ['utf-8-sig', 'windows-1251', 'cp1251', 'iso-8859-1', 'utf-8']
         
         content = None
@@ -56,10 +55,8 @@ if uploaded_file is not None:
             uploaded_file.seek(0)
             content = uploaded_file.getvalue().decode('utf-8', errors='replace')
 
-        # Разделяем на строки
         lines = content.split('\n')
         
-        # Ищем строку с настоящими заголовками (где есть Рейс;Дата;Частота и т.д.)
         data_start_index = -1
         for i, line in enumerate(lines):
             if 'Рейс;Дата;Частота;Сегмент;' in line:
@@ -67,25 +64,20 @@ if uploaded_file is not None:
                 break
         
         if data_start_index == -1:
-            # Если не нашли полные заголовки, ищем начало данных
             for i, line in enumerate(lines):
                 if line.startswith('N4-281') and line.count(';') > 10:
-                    data_start_index = i - 1  # Заголовки должны быть на строку выше
+                    data_start_index = i - 1
                     break
         
         if data_start_index >= 0 and data_start_index + 1 < len(lines):
-            # Берем заголовки и все последующие строки с данными
             header_line = lines[data_start_index].strip()
             data_lines = lines[data_start_index + 1:]
             
-            # Очищаем данные от пустых строк
             data_lines = [line.strip() for line in data_lines if line.strip() and line.count(';') > 5]
             
             if data_lines:
-                # Создаем CSV контент
                 csv_content = header_line + '\n' + '\n'.join(data_lines)
                 
-                # Создаем StringIO для csv.reader
                 csv_file = io.StringIO(csv_content)
                 reader = csv.DictReader(csv_file, delimiter=';')
                 
