@@ -17,97 +17,40 @@ uploaded_file = st.file_uploader("Загрузите CSV файл с данны�
 if uploaded_file is not None:
     try:
         # Чтение файла с обработкой BOM
-        content = uploaded_file.getvalue().decode('utf-8-sig')  # Исправлено: utf-8-sig для удаления BOM
-        st.text_area("Содержимое файла (первые 500 символов):", content[:500], height=150)
+        content = uploaded_file.getvalue().decode('utf-8-sig')
         
         # Автоматическое определение разделителя
         first_line = content.split('\n')[0]
-        st.write(f"Первая строка файла: {first_line}")
-        
         delimiter = ';' if ';' in first_line else ','
-        st.write(f"Определен разделитель: '{delimiter}'")
         
         # Чтение данных
         flights_data = defaultdict(lambda: defaultdict(list))
         all_flights = set()
         total_rows = 0
-        processed_rows = 0
         
         # Создаем StringIO для csv.reader
         csv_file = io.StringIO(content)
-        
-        # Показываем заголовки
-        reader = csv.DictReader(csv_file, delimiter=delimiter)
-        st.write(f"Заголовки файла: {reader.fieldnames}")
-        
-        # Сбрасываем указатель и читаем заново
-        csv_file.seek(0)
         reader = csv.DictReader(csv_file, delimiter=delimiter)
         
-        problematic_rows = []
-        
-        for row_num, row in enumerate(reader, 1):
+        for row in reader:
             try:
-                # Отладочная информация
-                if row_num <= 3:
-                    st.write(f"Строка {row_num}: {dict(list(row.items())[:5])}")
-                
-                # Используем правильные названия столбцов (без BOM)
-                flight_number = row.get('Flight') or row.get('\ufeffFlight', '')
-                date_str = row.get('Date', '')
-                
-                # Проверяем наличие обязательных полей
-                if not flight_number or not date_str:
-                    problematic_rows.append(f"Строка {row_num}: отсутствуют обязательные поля - Flight: '{flight_number}', Date: '{date_str}'")
-                    continue
-                
-                flight_number = flight_number.strip()
-                date_str = date_str.strip()
-                
-                # Пропускаем пустые строки
-                if not flight_number or not date_str:
-                    continue
-                
-                date_obj = datetime.strptime(date_str, '%d.%m.%Y')
+                flight_number = row['Flight'].strip()
+                date_obj = datetime.strptime(row['Date'], '%d.%m.%Y')
                 day_name = date_obj.strftime('%A')
-                
-                # Пытаемся получить числовые значения из разных возможных столбцов
-                bkd_str = row.get('seg_bkd_total', '0').strip()
-                nsh_str = row.get('noshow', '0').strip()
-                
-                # Заменяем пустые значения на 0
-                bkd = int(bkd_str) if bkd_str and bkd_str.isdigit() else 0
-                nsh = int(nsh_str) if nsh_str and nsh_str.isdigit() else 0
-                
-                segment = row.get('Segment', '').strip()
+                bkd = int(row['seg_bkd_total'])
+                nsh = int(row['noshow'])
+                segment = row['Segment'].strip()
                 
                 flights_data[flight_number][day_name].append((bkd, nsh, segment))
                 all_flights.add(flight_number)
                 total_rows += 1
-                processed_rows += 1
                     
-            except ValueError as e:
-                problematic_rows.append(f"Строка {row_num}: ошибка значения - {e}")
-                continue
-            except Exception as e:
-                problematic_rows.append(f"Строка {row_num}: непредвиденная ошибка - {e}")
+            except (KeyError, ValueError):
                 continue
         
-        # Показываем результаты обработки
-        st.success(f"✅ Обработка завершена!")
-        st.write(f"Всего строк в файле: {row_num}")
-        st.write(f"Успешно обработано: {processed_rows}")
-        st.write(f"Проблемных строк: {len(problematic_rows)}")
-        
-        if problematic_rows:
-            with st.expander("Показать проблемные строки"):
-                for problem in problematic_rows[:10]:
-                    st.write(problem)
+        st.success(f"✅ Файл успешно обработан! Записей: {total_rows}, Рейсов: {len(all_flights)}")
         
         if all_flights:
-            st.success(f"✅ Найдено рейсов: {len(all_flights)}")
-            st.write(f"Список рейсов: {', '.join(sorted(all_flights))}")
-            
             # Селектор рейса
             selected_flight = st.selectbox("Выберите рейс для анализа:", sorted(all_flights))
             
@@ -117,8 +60,6 @@ if uploaded_file is not None:
                 weekly_noshow_rate = {}
                 weekly_avg_bookings = {}
                 flight_segment = None
-                
-                st.write(f"Данные для рейса {selected_flight}: {len(flight_daily_data)} дней")
                 
                 for day, data_list in flight_daily_data.items():
                     if not data_list:
@@ -196,11 +137,10 @@ if uploaded_file is not None:
                     
                     st.success(f"**Рекомендуемый овербукинг для {max_rate_day}**: {recommended_overbooking} дополнительных мест")
         else:
-            st.error("❌ В файле не найдено данных о рейсах. Проверьте формат файла.")
+            st.error("❌ В файле не найдено данных о рейсах")
     
     except Exception as e:
-        st.error(f"❌ Критическая ошибка при обработке файла: {e}")
-        st.info("Попробуйте загрузить другой файл или проверьте формат данных")
+        st.error(f"❌ Ошибка при обработке файла: {e}")
 
 else:
     st.info("👆 Пожалуйста, загрузите CSV файл для начала анализа")
@@ -221,8 +161,6 @@ with st.expander("ℹ️ Инструкция по формату файла"):
     N4-281;01.09.2025;LED-KGD;216;6
     N4-281;02.09.2025;LED-KGD;192;7
     ```
-    
-    **Поддерживаемые разделители:** запятая (,) или точка с запятой (;)
     """)
 
 # Кнопка для сброса
