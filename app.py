@@ -5,15 +5,11 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 import io
 
-st.set_page_config(page_title="Анализ Noshow", page_icon="✈️", layout="wide")
+st.set_page_config(page_title="Анализ Noshow by Кирилл", page_icon="✈️", layout="wide")
 
 # Заголовок приложения
-st.title("✈️ Анализатор Noshow для авиарейсов by Кирилл")
+st.title("✈️ Анализатор Noshow для авиарейсов")
 st.markdown("---")
-
-# Инициализация состояния сессии
-if 'file_processed' not in st.session_state:
-    st.session_state.file_processed = False
 
 # Загрузка файла
 uploaded_file = st.file_uploader("Загрузите CSV файл с данными рейсов", type=['csv'])
@@ -140,14 +136,9 @@ if uploaded_file is not None:
                     recommended_overbooking = int(avg_bookings_max_day * max_rate)
                     
                     st.success(f"**Рекомендуемый овербукинг для {max_rate_day}**: {recommended_overbooking} дополнительных мест")
-        
-        # Кнопка для сброса - размещаем ПОСЛЕ обработки файла
-        st.markdown("---")
-        if st.button("🔄 Загрузить другой файл", type="primary"):
-            # Очищаем состояние загруженного файла
-            st.session_state.file_processed = False
-            st.rerun()
-            
+        else:
+            st.error("❌ В файле не найдено данных о рейсах")
+    
     except Exception as e:
         st.error(f"❌ Ошибка при обработке файла: {e}")
 
