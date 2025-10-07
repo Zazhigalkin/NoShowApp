@@ -65,7 +65,7 @@ if uploaded_file is not None:
         
         if data_start_index == -1:
             for i, line in enumerate(lines):
-                if line.startswith('N4-281') and line.count(';') > 10:
+                if line.startswith('N4-') and line.count(';') > 10:
                     data_start_index = i - 1
                     break
         
@@ -88,7 +88,7 @@ if uploaded_file is not None:
                 for row in reader:
                     try:
                         flight_number = row.get('Рейс', '').strip()
-                        if not flight_number or flight_number == 'N4-281, 01.09.25 - 07.10.25, All':
+                        if not flight_number:
                             continue
                             
                         date_str = row.get('Дата', '')
