@@ -16,41 +16,94 @@ uploaded_file = st.file_uploader("Загрузите CSV файл с данны�
 
 if uploaded_file is not None:
     try:
-        # Чтение файла в память
+        # Показываем содержимое файла для отладки
         content = uploaded_file.getvalue().decode('utf-8')
+        st.text_area("Содержимое файла (первые 500 символов):", content[:500], height=150)
         
         # Автоматическое определение разделителя
         first_line = content.split('\n')[0]
+        st.write(f"Первая строка файла: {first_line}")
+        
         delimiter = ';' if ';' in first_line else ','
+        st.write(f"Определен разделитель: '{delimiter}'")
         
         # Чтение данных
         flights_data = defaultdict(lambda: defaultdict(list))
         all_flights = set()
         total_rows = 0
+        processed_rows = 0
         
         # Создаем StringIO для csv.reader
         csv_file = io.StringIO(content)
+        
+        # Показываем заголовки
+        reader = csv.DictReader(csv_file, delimiter=delimiter)
+        st.write(f"Заголовки файла: {reader.fieldnames}")
+        
+        # Сбрасываем указатель
+        csv_file.seek(0)
         reader = csv.DictReader(csv_file, delimiter=delimiter)
         
-        for row in reader:
+        problematic_rows = []
+        
+        for row_num, row in enumerate(reader, 1):
             try:
+                # Отладочная информация
+                if row_num <= 3:  # Показываем первые 3 строки
+                    st.write(f"Строка {row_num}: {dict(list(row.items())[:5])}")
+                
+                # Проверяем наличие обязательных полей
+                if not row.get('Flight') or not row.get('Date'):
+                    problematic_rows.append(f"Строка {row_num}: отсутствуют обязательные поля")
+                    continue
+                
                 flight_number = row['Flight'].strip()
-                date_obj = datetime.strptime(row['Date'], '%d.%m.%Y')
+                date_str = row['Date'].strip()
+                
+                # Пропускаем пустые строки
+                if not flight_number or not date_str:
+                    continue
+                
+                date_obj = datetime.strptime(date_str, '%d.%m.%Y')
                 day_name = date_obj.strftime('%A')
-                bkd = int(row['seg_bkd_total'])
-                nsh = int(row['noshow'])
-                segment = row['Segment'].strip()
+                
+                # Пытаемся получить числовые значения
+                bkd_str = row.get('seg_bkd_total', '0').strip()
+                nsh_str = row.get('noshow', '0').strip()
+                
+                # Заменяем пустые значения на 0
+                bkd = int(bkd_str) if bkd_str and bkd_str.isdigit() else 0
+                nsh = int(nsh_str) if nsh_str and nsh_str.isdigit() else 0
+                
+                segment = row.get('Segment', '').strip()
                 
                 flights_data[flight_number][day_name].append((bkd, nsh, segment))
                 all_flights.add(flight_number)
                 total_rows += 1
+                processed_rows += 1
                     
-            except (KeyError, ValueError) as e:
+            except ValueError as e:
+                problematic_rows.append(f"Строка {row_num}: ошибка значения - {e}")
+                continue
+            except Exception as e:
+                problematic_rows.append(f"Строка {row_num}: непредвиденная ошибка - {e}")
                 continue
         
-        st.success(f"✅ Файл успешно обработан! Записей: {total_rows}, Рейсов: {len(all_flights)}")
+        # Показываем результаты обработки
+        st.success(f"✅ Обработка завершена!")
+        st.write(f"Всего строк в файле: {row_num}")
+        st.write(f"Успешно обработано: {processed_rows}")
+        st.write(f"Проблемных строк: {len(problematic_rows)}")
+        
+        if problematic_rows:
+            with st.expander("Показать проблемные строки"):
+                for problem in problematic_rows[:10]:  # Показываем первые 10 проблем
+                    st.write(problem)
         
         if all_flights:
+            st.success(f"✅ Найдено рейсов: {len(all_flights)}")
+            st.write(f"Список рейсов: {', '.join(sorted(all_flights))}")
+            
             # Селектор рейса
             selected_flight = st.selectbox("Выберите рейс для анализа:", sorted(all_flights))
             
@@ -60,6 +113,8 @@ if uploaded_file is not None:
                 weekly_noshow_rate = {}
                 weekly_avg_bookings = {}
                 flight_segment = None
+                
+                st.write(f"Данные для рейса {selected_flight}: {len(flight_daily_data)} дней")
                 
                 for day, data_list in flight_daily_data.items():
                     if not data_list:
@@ -84,16 +139,7 @@ if uploaded_file is not None:
                 
                 # Сегмент по умолчанию
                 if flight_segment is None:
-                    # Попробуем найти сегмент в других данных
-                    for flight_data in flights_data.values():
-                        for day_data in flight_data.values():
-                            if day_data:
-                                flight_segment = day_data[0][2]
-                                break
-                        if flight_segment:
-                            break
-                    if not flight_segment:
-                        flight_segment = "Unknown"
+                    flight_segment = "Не определен"
                 
                 # Статистика
                 st.subheader(f"📊 Статистика для рейса {selected_flight} {flight_segment}")
@@ -146,11 +192,11 @@ if uploaded_file is not None:
                     
                     st.success(f"**Рекомендуемый овербукинг для {max_rate_day}**: {recommended_overbooking} дополнительных мест")
         else:
-            st.warning("В файле не найдено данных о рейсах")
+            st.error("❌ В файле не найдено данных о рейсах. Проверьте формат файла.")
     
     except Exception as e:
-        st.error(f"❌ Ошибка при обработке файла: {e}")
-        st.info("Попробуйте загрузить другой файл")
+        st.error(f"❌ Критическая ошибка при обработке файла: {e}")
+        st.info("Попробуйте загрузить другой файл или проверьте формат данных")
 
 else:
     st.info("👆 Пожалуйста, загрузите CSV файл для начала анализа")
