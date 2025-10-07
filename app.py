@@ -206,7 +206,6 @@ if uploaded_file is not None:
                             else:
                                 st.warning("Нет данных для прогноза")
                         
-                        # Рекомендации
                         if weekly_noshow_rate:
                             max_rate_day = max(weekly_noshow_rate, key=weekly_noshow_rate.get)
                             max_rate = weekly_noshow_rate[max_rate_day]
@@ -241,7 +240,6 @@ if uploaded_file is not None:
 else:
     st.info("👆 Пожалуйста, загрузите CSV файл для начала анализа")
 
-# Инструкция
 with st.expander("ℹ️ Инструкция по использованию калькулятора"):
     st.markdown("""
     **Заходите в Leonardo**
