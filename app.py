@@ -8,7 +8,7 @@ import io
 st.set_page_config(page_title="Анализ Noshow by Кирилл", page_icon="✈️", layout="wide")
 
 # Заголовок приложения
-st.title("✈️ Анализатор Noshow для авиарейсов by Кирилл")
+st.title("✈️ Анализатор Noshow для авиарейсов")
 st.markdown("---")
 
 # Загрузка файла
@@ -19,33 +19,33 @@ if uploaded_file is not None:
         # Чтение файла с обработкой BOM
         content = uploaded_file.getvalue().decode('utf-8-sig')
         
-        # Автоматическое определение разделителя
-        first_line = content.split('\n')[0]
-        delimiter = ';' if ';' in first_line else ','
+        # Пропускаем первые 2 строки (заголовки) и читаем данные
+        lines = content.split('\n')[2:]  # Пропускаем первые 2 строки
+        csv_content = '\n'.join(lines)
         
-        # Чтение данных
+        # Создаем StringIO для csv.reader
+        csv_file = io.StringIO(csv_content)
+        reader = csv.DictReader(csv_file, delimiter=';')
+        
         flights_data = defaultdict(lambda: defaultdict(list))
         all_flights = set()
         total_rows = 0
         
-        # Создаем StringIO для csv.reader
-        csv_file = io.StringIO(content)
-        reader = csv.DictReader(csv_file, delimiter=delimiter)
-        
         for row in reader:
             try:
-                flight_number = row['Flight'].strip()
-                date_obj = datetime.strptime(row['Date'], '%d.%m.%Y')
+                # Маппинг колонок из вашего формата
+                flight_number = row['Рейс'].strip()
+                date_obj = datetime.strptime(row['Дата'], '%d.%m.%Y')
                 day_name = date_obj.strftime('%A')
-                bkd = int(row['seg_bkd_total'])
-                nsh = int(row['noshow'])
-                segment = row['Segment'].strip()
+                bkd = int(row['Seg Bkd Total'])  # Бронирования
+                nsh = int(row['Nsh'])  # Noshow
+                segment = row['Сегмент'].strip()
                 
                 flights_data[flight_number][day_name].append((bkd, nsh, segment))
                 all_flights.add(flight_number)
                 total_rows += 1
                     
-            except (KeyError, ValueError):
+            except (KeyError, ValueError, TypeError) as e:
                 continue
         
         st.success(f"✅ Файл успешно обработан! Записей: {total_rows}, Рейсов: {len(all_flights)}")
@@ -94,12 +94,26 @@ if uploaded_file is not None:
                 with col1:
                     st.markdown("**Статистика по дням недели:**")
                     if weekly_noshow_rate:
-                        for day, rate in sorted(weekly_noshow_rate.items()):
-                            total_bkd = sum(bkd for bkd, nsh, seg in flight_daily_data[day])
-                            total_nsh = sum(nsh for bkd, nsh, seg in flight_daily_data[day])
-                            count = len(flight_daily_data[day])
-                            
-                            st.write(f"**{day}**: Rate={rate:.3f}, Noshow={total_nsh}, Bookings={total_bkd}, Рейсов={count}")
+                        # Порядок дней недели
+                        days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+                        russian_days = {
+                            'Monday': 'Понедельник',
+                            'Tuesday': 'Вторник', 
+                            'Wednesday': 'Среда',
+                            'Thursday': 'Четверг',
+                            'Friday': 'Пятница',
+                            'Saturday': 'Суббота',
+                            'Sunday': 'Воскресенье'
+                        }
+                        
+                        for day in days_order:
+                            if day in weekly_noshow_rate:
+                                rate = weekly_noshow_rate[day]
+                                total_bkd = sum(bkd for bkd, nsh, seg in flight_daily_data[day])
+                                total_nsh = sum(nsh for bkd, nsh, seg in flight_daily_data[day])
+                                count = len(flight_daily_data[day])
+                                
+                                st.write(f"**{russian_days[day]}**: Rate={rate:.3f}, Noshow={total_nsh}, Bookings={total_bkd}, Рейсов={count}")
                     else:
                         st.warning("Нет данных для выбранного рейса")
                 
@@ -109,17 +123,28 @@ if uploaded_file is not None:
                     today = datetime.now().date()
                     
                     if weekly_noshow_rate:
+                        russian_days = {
+                            'Monday': 'Понедельник',
+                            'Tuesday': 'Вторник', 
+                            'Wednesday': 'Среда',
+                            'Thursday': 'Четверг',
+                            'Friday': 'Пятница',
+                            'Saturday': 'Суббота',
+                            'Sunday': 'Воскресенье'
+                        }
+                        
                         for i in range(7):
                             future_date = today + timedelta(days=i)
-                            day_name = future_date.strftime('%A')
+                            day_name_en = future_date.strftime('%A')
+                            day_name_ru = russian_days.get(day_name_en, day_name_en)
                             
-                            rate = weekly_noshow_rate.get(day_name, 0)
-                            avg_bookings = weekly_avg_bookings.get(day_name, 200)
+                            rate = weekly_noshow_rate.get(day_name_en, 0)
+                            avg_bookings = weekly_avg_bookings.get(day_name_en, 200)
                             predicted_noshow = avg_bookings * rate
                             
                             date_type = "🎯 СЕГОДНЯ" if i == 0 else f"через {i} дн."
                             
-                            st.write(f"**{future_date.strftime('%d.%m.%Y')}** ({day_name}) - {predicted_noshow:.1f} noshow")
+                            st.write(f"**{future_date.strftime('%d.%m.%Y')}** ({day_name_ru}) - {predicted_noshow:.1f} noshow")
                     else:
                         st.warning("Нет данных для прогноза")
                 
@@ -129,13 +154,23 @@ if uploaded_file is not None:
                     min_rate_day = min(weekly_noshow_rate, key=weekly_noshow_rate.get)
                     max_rate = weekly_noshow_rate[max_rate_day]
                     
+                    russian_days = {
+                        'Monday': 'Понедельник',
+                        'Tuesday': 'Вторник', 
+                        'Wednesday': 'Среда',
+                        'Thursday': 'Четверг',
+                        'Friday': 'Пятница',
+                        'Saturday': 'Суббота',
+                        'Sunday': 'Воскресенье'
+                    }
+                    
                     st.subheader("💡 Рекомендации")
-                    st.info(f"**Самый высокий noshow rate в {max_rate_day}**: {max_rate:.3f} ({max_rate*100:.1f}%)")
+                    st.info(f"**Самый высокий noshow rate в {russian_days.get(max_rate_day, max_rate_day)}**: {max_rate:.3f} ({max_rate*100:.1f}%)")
                     
                     avg_bookings_max_day = weekly_avg_bookings.get(max_rate_day, 200)
                     recommended_overbooking = int(avg_bookings_max_day * max_rate)
                     
-                    st.success(f"**Рекомендуемый овербукинг для {max_rate_day}**: {recommended_overbooking} дополнительных мест")
+                    st.success(f"**Рекомендуемый овербукинг для {russian_days.get(max_rate_day, max_rate_day)}**: {recommended_overbooking} дополнительных мест")
         else:
             st.error("❌ В файле не найдено данных о рейсах")
     
@@ -148,17 +183,19 @@ else:
 # Инструкция
 with st.expander("ℹ️ Инструкция по формату файла"):
     st.markdown("""
-    Файл CSV должен содержать следующие колонки:
-    - **Flight** - номер рейса
-    - **Date** - дата в формате DD.MM.YYYY
-    - **Segment** - маршрут
-    - **seg_bkd_total** - количество бронирований
-    - **noshow** - количество неявившихся пассажиров
-    
-    Пример структуры:
+    **Требуемые колонки в CSV файле:**
+    - **Рейс** - номер рейса
+    - **Дата** - дата в формате DD.MM.YYYY  
+    - **Сегмент** - маршрут (например: LED-KGD)
+    - **Seg Bkd Total** - количество бронирований
+    - **Nsh** - количество неявившихся пассажиров (noshow)
+
+    **Пример данных из вашего файла:**
     ```
-    Flight;Date;Segment;seg_bkd_total;noshow
+    Рейс;Дата;Сегмент;Seg Bkd Total;Nsh
     N4-281;01.09.2025;LED-KGD;216;6
     N4-281;02.09.2025;LED-KGD;192;7
     ```
+    
+    **Примечание:** Файл автоматически обрабатывает русские названия колонок и пропускает служебные строки.
     """)
