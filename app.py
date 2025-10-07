@@ -16,8 +16,8 @@ uploaded_file = st.file_uploader("Загрузите CSV файл с данны�
 
 if uploaded_file is not None:
     try:
-        # Показываем содержимое файла для отладки
-        content = uploaded_file.getvalue().decode('utf-8')
+        # Чтение файла с обработкой BOM
+        content = uploaded_file.getvalue().decode('utf-8-sig')  # Исправлено: utf-8-sig для удаления BOM
         st.text_area("Содержимое файла (первые 500 символов):", content[:500], height=150)
         
         # Автоматическое определение разделителя
@@ -40,7 +40,7 @@ if uploaded_file is not None:
         reader = csv.DictReader(csv_file, delimiter=delimiter)
         st.write(f"Заголовки файла: {reader.fieldnames}")
         
-        # Сбрасываем указатель
+        # Сбрасываем указатель и читаем заново
         csv_file.seek(0)
         reader = csv.DictReader(csv_file, delimiter=delimiter)
         
@@ -49,16 +49,20 @@ if uploaded_file is not None:
         for row_num, row in enumerate(reader, 1):
             try:
                 # Отладочная информация
-                if row_num <= 3:  # Показываем первые 3 строки
+                if row_num <= 3:
                     st.write(f"Строка {row_num}: {dict(list(row.items())[:5])}")
                 
+                # Используем правильные названия столбцов (без BOM)
+                flight_number = row.get('Flight') or row.get('\ufeffFlight', '')
+                date_str = row.get('Date', '')
+                
                 # Проверяем наличие обязательных полей
-                if not row.get('Flight') or not row.get('Date'):
-                    problematic_rows.append(f"Строка {row_num}: отсутствуют обязательные поля")
+                if not flight_number or not date_str:
+                    problematic_rows.append(f"Строка {row_num}: отсутствуют обязательные поля - Flight: '{flight_number}', Date: '{date_str}'")
                     continue
                 
-                flight_number = row['Flight'].strip()
-                date_str = row['Date'].strip()
+                flight_number = flight_number.strip()
+                date_str = date_str.strip()
                 
                 # Пропускаем пустые строки
                 if not flight_number or not date_str:
@@ -67,7 +71,7 @@ if uploaded_file is not None:
                 date_obj = datetime.strptime(date_str, '%d.%m.%Y')
                 day_name = date_obj.strftime('%A')
                 
-                # Пытаемся получить числовые значения
+                # Пытаемся получить числовые значения из разных возможных столбцов
                 bkd_str = row.get('seg_bkd_total', '0').strip()
                 nsh_str = row.get('noshow', '0').strip()
                 
@@ -97,7 +101,7 @@ if uploaded_file is not None:
         
         if problematic_rows:
             with st.expander("Показать проблемные строки"):
-                for problem in problematic_rows[:10]:  # Показываем первые 10 проблем
+                for problem in problematic_rows[:10]:
                     st.write(problem)
         
         if all_flights:
