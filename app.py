@@ -31,7 +31,7 @@ import io
 st.set_page_config(page_title="Анализ Noshow by Кирилл", page_icon="✈️", layout="wide")
 
 
-st.title("✈️ Анализатор/Калькулятор Noshow для авиарейсов by Кирилл")
+st.title("✈️ Калькулятор NoShow для авиарейсов by Кирилл")
 st.markdown("---")
 
 
@@ -202,7 +202,7 @@ if uploaded_file is not None:
                                     avg_bookings = weekly_avg_bookings.get(day_name_en, 200)
                                     predicted_noshow = avg_bookings * rate
                                     
-                                    st.write(f"**{future_date.strftime('%d.%m.%Y')}** ({day_name_ru}) - {predicted_noshow:.1f} noshow")
+                                    st.write(f"**{future_date.strftime('%d.%m.%Y')}** ({day_name_ru}) - {predicted_noshow:.1f} NoShow")
                             else:
                                 st.warning("Нет данных для прогноза")
                         
@@ -221,7 +221,7 @@ if uploaded_file is not None:
                             }
                             
                             st.subheader("💡 Рекомендации")
-                            st.info(f"**Самый высокий noshow rate в {russian_days.get(max_rate_day, max_rate_day)}**: {max_rate:.3f} ({max_rate*100:.1f}%)")
+                            st.info(f"**Самый высокий NoShow rate в {russian_days.get(max_rate_day, max_rate_day)}**: {max_rate:.3f} ({max_rate*100:.1f}%)")
                             
                             avg_bookings_max_day = weekly_avg_bookings.get(max_rate_day, 200)
                             recommended_overbooking = int(avg_bookings_max_day * max_rate)
