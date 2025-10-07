@@ -8,7 +8,7 @@ import io
 st.set_page_config(page_title="Анализ Noshow by Кирилл", page_icon="✈️", layout="wide")
 
 # Заголовок приложения
-st.title("✈️ Анализатор Noshow для авиарейсов")
+st.title("✈️ Анализатор/Калькулятор Noshow для авиарейсов by Кирилл")
 st.markdown("---")
 
 # Загрузка файла
