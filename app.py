@@ -4,6 +4,7 @@ import csv
 from datetime import datetime, timedelta
 from collections import defaultdict
 import io
+
 #Россия - священная наша держава,
 #Россия - любимая наша страна.
 #Могучая воля, великая слава -
@@ -28,12 +29,11 @@ import io
 #Братских народов союз вековой,
 #Предками данная мудрость народная!
 #Славься, страна! Мы гордимся тобой!
-st.set_page_config(page_title="Анализ Noshow by Кирилл", page_icon="✈️", layout="wide")
 
+st.set_page_config(page_title="Анализ Noshow by Кирилл", page_icon="✈️", layout="wide")
 
 st.title("✈️ Калькулятор NoShow для авиарейсов by Кирилл")
 st.markdown("---")
-
 
 uploaded_file = st.file_uploader("Загрузите CSV файл с данными рейсов", type=['csv'])
 
@@ -83,6 +83,7 @@ if uploaded_file is not None:
                 
                 flights_data = defaultdict(lambda: defaultdict(list))
                 all_flights = set()
+                flight_segments = {}
                 total_rows = 0
                 
                 for row in reader:
@@ -108,6 +109,11 @@ if uploaded_file is not None:
                         
                         flights_data[flight_number][day_name].append((bkd, nsh, segment))
                         all_flights.add(flight_number)
+                        
+                        # Сохраняем сегмент для каждого рейса
+                        if flight_number not in flight_segments:
+                            flight_segments[flight_number] = segment
+                            
                         total_rows += 1
                             
                     except (KeyError, ValueError, TypeError):
@@ -116,117 +122,181 @@ if uploaded_file is not None:
                 st.success(f"✅ Файл успешно обработан! Записей: {total_rows}, Рейсов: {len(all_flights)}")
                 
                 if all_flights:
-                    selected_flight = st.selectbox("Выберите рейс для анализа:", sorted(all_flights))
+                    # Создаем список рейсов с сегментами для отображения
+                    flight_options = [f"{flight} ({flight_segments.get(flight, 'Не определен')})" for flight in sorted(all_flights)]
                     
-                    if selected_flight:
-                        flight_daily_data = flights_data[selected_flight]
-                        weekly_noshow_rate = {}
-                        weekly_avg_bookings = {}
-                        flight_segment = None
+                    # Мультивыбор рейсов
+                    selected_flights_with_segments = st.multiselect(
+                        "Выберите рейсы для анализа:", 
+                        flight_options,
+                        default=flight_options[:min(5, len(flight_options))]  # По умолчанию первые 5 рейсов
+                    )
+                    
+                    # Извлекаем номера рейсов из выбранных опций
+                    selected_flights = [flight.split(' (')[0] for flight in selected_flights_with_segments]
+                    
+                    if selected_flights:
+                        # Создаем вкладки для каждого рейса
+                        tabs = st.tabs([f"✈️ {flight}" for flight in selected_flights])
                         
-                        for day, data_list in flight_daily_data.items():
-                            if not data_list:
-                                continue
+                        for i, flight in enumerate(selected_flights):
+                            with tabs[i]:
+                                flight_daily_data = flights_data[flight]
+                                weekly_noshow_rate = {}
+                                weekly_avg_bookings = {}
+                                flight_segment = flight_segments.get(flight, "Не определен")
                                 
-                            total_bkd_day = 0
-                            total_nsh_day = 0
-                            
-                            if flight_segment is None and data_list:
-                                flight_segment = data_list[0][2]
-                            
-                            for bkd, nsh, segment in data_list:
-                                total_bkd_day += bkd
-                                total_nsh_day += nsh
-                            
-                            if total_bkd_day > 0:
-                                weekly_noshow_rate[day] = total_nsh_day / total_bkd_day
-                            else:
-                                weekly_noshow_rate[day] = 0.0
-                                
-                            weekly_avg_bookings[day] = total_bkd_day // len(data_list) if data_list else 0
-                        
-                        if flight_segment is None:
-                            flight_segment = "Не определен"
-                        
-                        # Статистика
-                        st.subheader(f"📊 Статистика для рейса {selected_flight} {flight_segment}")
-                        
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            st.markdown("**Статистика по дням недели:**")
-                            if weekly_noshow_rate:
-                                days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-                                russian_days = {
-                                    'Monday': 'Понедельник',
-                                    'Tuesday': 'Вторник', 
-                                    'Wednesday': 'Среда',
-                                    'Thursday': 'Четверг',
-                                    'Friday': 'Пятница',
-                                    'Saturday': 'Суббота',
-                                    'Sunday': 'Воскресенье'
-                                }
-                                
-                                for day in days_order:
-                                    if day in weekly_noshow_rate:
-                                        rate = weekly_noshow_rate[day]
-                                        total_bkd = sum(bkd for bkd, nsh, seg in flight_daily_data[day])
-                                        total_nsh = sum(nsh for bkd, nsh, seg in flight_daily_data[day])
-                                        count = len(flight_daily_data[day])
+                                for day, data_list in flight_daily_data.items():
+                                    if not data_list:
+                                        continue
                                         
-                                        st.write(f"**{russian_days[day]}**: Rate={rate:.3f}, Noshow={total_nsh}, Bookings={total_bkd}, Рейсов={count}")
-                            else:
-                                st.warning("Нет данных для выбранного рейса")
-                        
-                        with col2:
-                            st.markdown("**📈 Прогноз на ближайшую неделю:**")
-                            today = datetime.now().date()
-                            
-                            if weekly_noshow_rate:
-                                russian_days = {
-                                    'Monday': 'Понедельник',
-                                    'Tuesday': 'Вторник', 
-                                    'Wednesday': 'Среда',
-                                    'Thursday': 'Четверг',
-                                    'Friday': 'Пятница',
-                                    'Saturday': 'Суббота',
-                                    'Sunday': 'Воскресенье'
-                                }
+                                    total_bkd_day = 0
+                                    total_nsh_day = 0
+                                    
+                                    for bkd, nsh, segment in data_list:
+                                        total_bkd_day += bkd
+                                        total_nsh_day += nsh
+                                    
+                                    if total_bkd_day > 0:
+                                        weekly_noshow_rate[day] = total_nsh_day / total_bkd_day
+                                    else:
+                                        weekly_noshow_rate[day] = 0.0
+                                        
+                                    weekly_avg_bookings[day] = total_bkd_day // len(data_list) if data_list else 0
                                 
-                                for i in range(7):
-                                    future_date = today + timedelta(days=i)
-                                    day_name_en = future_date.strftime('%A')
-                                    day_name_ru = russian_days.get(day_name_en, day_name_en)
+                                # Статистика
+                                st.subheader(f"📊 Статистика для рейса {flight} {flight_segment}")
+                                
+                                col1, col2 = st.columns(2)
+                                
+                                with col1:
+                                    st.markdown("**Статистика по дням недели:**")
+                                    if weekly_noshow_rate:
+                                        days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+                                        russian_days = {
+                                            'Monday': 'Понедельник',
+                                            'Tuesday': 'Вторник', 
+                                            'Wednesday': 'Среда',
+                                            'Thursday': 'Четверг',
+                                            'Friday': 'Пятница',
+                                            'Saturday': 'Суббота',
+                                            'Sunday': 'Воскресенье'
+                                        }
+                                        
+                                        for day in days_order:
+                                            if day in weekly_noshow_rate:
+                                                rate = weekly_noshow_rate[day]
+                                                total_bkd = sum(bkd for bkd, nsh, seg in flight_daily_data[day])
+                                                total_nsh = sum(nsh for bkd, nsh, seg in flight_daily_data[day])
+                                                count = len(flight_daily_data[day])
+                                                
+                                                st.write(f"**{russian_days[day]}**: Rate={rate:.3f}, Noshow={total_nsh}, Bookings={total_bkd}, Рейсов={count}")
+                                            else:
+                                                st.write(f"**{russian_days[day]}**: Нет данных")
+                                    else:
+                                        st.warning("Нет данных для выбранного рейса")
+                                
+                                with col2:
+                                    st.markdown("**📈 Прогноз на ближайшую неделю:**")
+                                    today = datetime.now().date()
                                     
-                                    rate = weekly_noshow_rate.get(day_name_en, 0)
-                                    avg_bookings = weekly_avg_bookings.get(day_name_en, 200)
-                                    predicted_noshow = avg_bookings * rate
+                                    if weekly_noshow_rate:
+                                        russian_days = {
+                                            'Monday': 'Понедельник',
+                                            'Tuesday': 'Вторник', 
+                                            'Wednesday': 'Среда',
+                                            'Thursday': 'Четверг',
+                                            'Friday': 'Пятница',
+                                            'Saturday': 'Суббота',
+                                            'Sunday': 'Воскресенье'
+                                        }
+                                        
+                                        for i in range(7):
+                                            future_date = today + timedelta(days=i)
+                                            day_name_en = future_date.strftime('%A')
+                                            day_name_ru = russian_days.get(day_name_en, day_name_en)
+                                            
+                                            rate = weekly_noshow_rate.get(day_name_en, 0)
+                                            avg_bookings = weekly_avg_bookings.get(day_name_en, 200)
+                                            predicted_noshow = avg_bookings * rate
+                                            
+                                            st.write(f"**{future_date.strftime('%d.%m.%Y')}** ({day_name_ru}) - {predicted_noshow:.1f} NoShow")
+                                    else:
+                                        st.warning("Нет данных для прогноза")
+                                
+                                if weekly_noshow_rate:
+                                    max_rate_day = max(weekly_noshow_rate, key=weekly_noshow_rate.get)
+                                    max_rate = weekly_noshow_rate[max_rate_day]
                                     
-                                    st.write(f"**{future_date.strftime('%d.%m.%Y')}** ({day_name_ru}) - {predicted_noshow:.1f} NoShow")
-                            else:
-                                st.warning("Нет данных для прогноза")
+                                    russian_days = {
+                                        'Monday': 'Понедельник',
+                                        'Tuesday': 'Вторник', 
+                                        'Wednesday': 'Среда',
+                                        'Thursday': 'Четверг',
+                                        'Friday': 'Пятница',
+                                        'Saturday': 'Суббота',
+                                        'Sunday': 'Воскресенье'
+                                    }
+                                    
+                                    st.subheader("💡 Рекомендации")
+                                    st.info(f"**Самый высокий NoShow rate в {russian_days.get(max_rate_day, max_rate_day)}**: {max_rate:.3f} ({max_rate*100:.1f}%)")
+                                    
+                                    avg_bookings_max_day = weekly_avg_bookings.get(max_rate_day, 200)
+                                    recommended_overbooking = int(avg_bookings_max_day * max_rate)
+                                    
+                                    st.success(f"**Рекомендуемый овербукинг для {russian_days.get(max_rate_day, max_rate_day)}**: {recommended_overbooking} дополнительных мест")
                         
-                        if weekly_noshow_rate:
-                            max_rate_day = max(weekly_noshow_rate, key=weekly_noshow_rate.get)
-                            max_rate = weekly_noshow_rate[max_rate_day]
+                        # Сводная таблица по всем выбранным рейсам
+                        st.markdown("---")
+                        st.subheader("📋 Сводная таблица по всем рейсам")
+                        
+                        # Создаем сводную таблицу
+                        summary_data = []
+                        days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+                        russian_days = {
+                            'Monday': 'Пн',
+                            'Tuesday': 'Вт', 
+                            'Wednesday': 'Ср',
+                            'Thursday': 'Чт',
+                            'Friday': 'Пт',
+                            'Saturday': 'Сб',
+                            'Sunday': 'Вс'
+                        }
+                        
+                        for flight in selected_flights:
+                            flight_daily_data = flights_data[flight]
+                            flight_segment = flight_segments.get(flight, "Не определен")
                             
-                            russian_days = {
-                                'Monday': 'Понедельник',
-                                'Tuesday': 'Вторник', 
-                                'Wednesday': 'Среда',
-                                'Thursday': 'Четверг',
-                                'Friday': 'Пятница',
-                                'Saturday': 'Суббота',
-                                'Sunday': 'Воскресенье'
+                            row_data = {
+                                'Рейс': flight,
+                                'Сегмент': flight_segment
                             }
                             
-                            st.subheader("💡 Рекомендации")
-                            st.info(f"**Самый высокий NoShow rate в {russian_days.get(max_rate_day, max_rate_day)}**: {max_rate:.3f} ({max_rate*100:.1f}%)")
+                            # Добавляем данные по дням недели
+                            for day in days_order:
+                                if day in flight_daily_data:
+                                    total_bkd = sum(bkd for bkd, nsh, seg in flight_daily_data[day])
+                                    total_nsh = sum(nsh for bkd, nsh, seg in flight_daily_data[day])
+                                    rate = total_nsh / total_bkd if total_bkd > 0 else 0
+                                    row_data[russian_days[day]] = f"{rate:.3f}"
+                                else:
+                                    row_data[russian_days[day]] = "Н/Д"
                             
-                            avg_bookings_max_day = weekly_avg_bookings.get(max_rate_day, 200)
-                            recommended_overbooking = int(avg_bookings_max_day * max_rate)
+                            summary_data.append(row_data)
+                        
+                        if summary_data:
+                            summary_df = pd.DataFrame(summary_data)
+                            st.dataframe(summary_df, use_container_width=True)
                             
-                            st.success(f"**Рекомендуемый овербукинг для {russian_days.get(max_rate_day, max_rate_day)}**: {recommended_overbooking} дополнительных мест")
+                            # Скачать сводную таблицу
+                            csv_summary = summary_df.to_csv(index=False, encoding='utf-8-sig')
+                            st.download_button(
+                                label="📥 Скачать сводную таблицу",
+                                data=csv_summary,
+                                file_name=f"noshow_summary_{datetime.now().strftime('%Y%m%d')}.csv",
+                                mime="text/csv"
+                            )
+                            
                 else:
                     st.error("❌ Не найдено данных о рейсах в файле")
             else:
@@ -250,4 +320,9 @@ with st.expander("ℹ️ Инструкция по использованию к
     - **По хорошему вести отдельный файл и раз в месяц выгружать данные для анализа в него, чтобы выбросы меньше влияли на прогноз. С другой стороны сезонность тоже влияет так что думойте....**
     - **Для защиты данных можно поменять названия/номера рейсов в csv файле на что угодно (ctrl+f)**
     
+    **Новые возможности:**
+    - **Можно выбрать несколько рейсов одновременно**
+    - **Каждый рейс отображается в отдельной вкладке**
+    - **Добавлена сводная таблица по всем выбранным рейсам**
+    - **Можно скачать сводную таблицу в CSV**
     """)
