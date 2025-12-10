@@ -30,9 +30,9 @@ import io
 #Предками данная мудрость народная!
 #Славься, страна! Мы гордимся тобой!
 
-st.set_page_config(page_title="Анализ Noshow by Кирилл", page_icon="✈️", layout="wide")
+st.set_page_config(page_title="Анализ Noshow", page_icon="✈️", layout="wide")
 
-st.title("✈️ Калькулятор NoShow для авиарейсов by Кирилл")
+st.title("✈️ Калькулятор NoShow для авиарейсов")
 st.markdown("---")
 
 uploaded_file = st.file_uploader("Загрузите CSV файл с данными рейсов", type=['csv'])
