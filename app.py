@@ -170,6 +170,7 @@ if uploaded_file is not None:
                             (d['nsh'] / d['bkd']) if d['bkd'] > 0 else 0.0 for d in data_list
                         ]
                         rate_std = statistics.pstdev(per_flight_rates) if count > 1 else 0.0
+                        rate_median = statistics.median(per_flight_rates) if count else 0.0
 
                         flights_with_den_brd = sum(1 for v in den_brd_values if v > 0)
                         total_den_brd = sum(den_brd_values)
@@ -177,6 +178,7 @@ if uploaded_file is not None:
 
                         return {
                             'rate': rate,
+                            'rate_median': rate_median,
                             'rate_std': rate_std,
                             'avg_bookings': avg_bookings,
                             'count': count,
@@ -209,7 +211,8 @@ if uploaded_file is not None:
                                                 s = day_stats[day]
                                                 reliability_flag = "" if s['reliable'] else " ⚠️ мало данных"
                                                 line = (f"**{russian_days_full[day]}**: Rate={s['rate']:.3f} "
-                                                        f"(±{s['rate_std']:.3f}), Noshow={s['total_nsh']}, "
+                                                        f"(±{s['rate_std']:.3f}), Медиана={s['rate_median']:.3f}, "
+                                                        f"Noshow={s['total_nsh']}, "
                                                         f"Bookings={s['total_bkd']}, Рейсов={s['count']}{reliability_flag}")
                                                 st.write(line)
                                                 if has_den_brd and s['total_den_brd'] > 0:
@@ -225,6 +228,7 @@ if uploaded_file is not None:
 
                                 with col2:
                                     st.markdown("**📈 Прогноз на ближайшую неделю:**")
+                                    st.caption(f"С учётом коэффициента агрессивности {risk_factor:.2f} (слайдер слева)")
                                     today = datetime.now().date()
 
                                     if day_stats:
@@ -235,10 +239,12 @@ if uploaded_file is not None:
 
                                             s = day_stats.get(day_name_en)
                                             if s:
-                                                predicted_noshow = s['avg_bookings'] * s['rate']
+                                                predicted_noshow_mean = s['avg_bookings'] * s['rate'] * risk_factor
+                                                predicted_noshow_median = s['avg_bookings'] * s['rate_median'] * risk_factor
                                                 reliability_flag = "" if s['reliable'] else " ⚠️"
                                                 st.write(f"**{future_date.strftime('%d.%m.%Y')}** ({day_name_ru}) - "
-                                                         f"{predicted_noshow:.1f} NoShow{reliability_flag}")
+                                                         f"{predicted_noshow_mean:.1f} NoShow (по среднему) / "
+                                                         f"{predicted_noshow_median:.1f} (по медиане){reliability_flag}")
                                             else:
                                                 st.write(f"**{future_date.strftime('%d.%m.%Y')}** ({day_name_ru}) - нет данных")
                                     else:
@@ -254,7 +260,8 @@ if uploaded_file is not None:
                                         f"рекомендуем не полагаться на эту цифру, пока не накопится минимум {MIN_RELIABLE_SAMPLES}."
                                     )
                                     st.info(f"**Самый высокий NoShow rate в {russian_days_full.get(max_rate_day, max_rate_day)}**: "
-                                            f"{s['rate']:.3f} ± {s['rate_std']:.3f} ({s['rate']*100:.1f}%){reliability_note}")
+                                            f"{s['rate']:.3f} ± {s['rate_std']:.3f} (медиана {s['rate_median']:.3f}), "
+                                            f"{s['rate']*100:.1f}%{reliability_note}")
 
                                     recommended_overbooking = int(s['avg_bookings'] * s['rate'] * risk_factor)
 
@@ -288,7 +295,10 @@ if uploaded_file is not None:
                                     s = compute_day_stats(flight_daily_data[day])
                                     flag = "" if s['reliable'] else "⚠️"
                                     den_flag = " 🚫" if (has_den_brd and s['total_den_brd'] > 0) else ""
-                                    row_data[russian_days_short[day]] = f"{s['rate']:.3f}{flag}{den_flag} (n={s['count']})"
+                                    row_data[russian_days_short[day]] = (
+                                        f"{s['rate']:.3f} / мед.{s['rate_median']:.3f}"
+                                        f"{flag}{den_flag} (n={s['count']})"
+                                    )
                                 else:
                                     row_data[russian_days_short[day]] = "Н/Д"
 
